@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"unicode/utf8"
 )
@@ -48,19 +49,43 @@ func validateChirpHander(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check chirp length
 	if utf8.RuneCountInString(params.Body) > 140 {
 		respondWithError(w, 400, "Chirp is too long")
 		return
 	}
 
+	// Clean chirp
+
+	badWords := map[string]struct{}{ // instead of slice, map with keys to empty structs -> only need check if key exist
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	}
+	cleaned := getCleanedBody(params.Body, badWords)
+
 	type validResp struct {
-		Valid bool `json:"valid"`
+		CleanedBody string `json:"cleaned_body"`
 	}
 	u := validResp{
-		Valid: true,
+		CleanedBody: cleaned,
 	}
-	respondWithJSON(w, 200, u)
+	respondWithJSON(w, http.StatusOK, u)
 }
+
+func getCleanedBody(body string, badWords map[string]struct{}) string {
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		loweredWord := strings.ToLower(word)
+		if _, ok := badWords[loweredWord]; ok {
+			words[i] = "****"
+		}
+	}
+	cleaned := strings.Join(words, " ")
+	return cleaned
+}
+
+// Helper function to handle the error and pack it in JSON with respondWithJSON
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
 	type errorResponse struct {
@@ -70,6 +95,8 @@ func respondWithError(w http.ResponseWriter, code int, msg string) {
 		Error: msg,
 	})
 }
+
+// Helper function to respond with JSON with any input
 
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
