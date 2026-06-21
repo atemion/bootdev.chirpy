@@ -1,18 +1,43 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync/atomic"
 	"unicode/utf8"
+
+	"github.com/atemion/bootdev.chirpy/internal/database"
+	"github.com/joho/godotenv"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
+
+	// Load .env and fetch database URL from it
+
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+
+	// Establish connection with db
+
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatal(err)
+	}
+	dbQueries := database.New(db)
+
+	// Create multiplex server
+
 	mux := http.NewServeMux()
-	apiCfg := &apiConfig{}
+	apiCfg := &apiConfig{
+		database: dbQueries,
+	}
 
 	mux.Handle("/app/", apiCfg.middlewareMetricsInc(http.StripPrefix("/app/", http.FileServer(http.Dir(".")))))
 	mux.HandleFunc("GET /api/healthz", myHandler)
@@ -115,6 +140,7 @@ func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 // Define struct to store value
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	database       *database.Queries
 }
 
 // wrap main handler in middleware to increment with every hit
